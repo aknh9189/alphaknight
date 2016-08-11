@@ -1,2 +1,2 @@
 # alphaknight
-Chess Engine in Java
+Alphaknight will be a chess engine written in Java
