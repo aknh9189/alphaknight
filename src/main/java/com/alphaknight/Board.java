@@ -19,23 +19,23 @@ import java.util.Stack;
  * 0  1  2  3  4  5  6  7   WHITE
  */
 public class Board {
-    public static final int EMPTY = 0;
-    public static final int PAWN = 1;
-    public static final int KNIGHT = 2;
-    public static final int BISHOP = 3;
-    public static final int ROOK = 4;
-    public static final int QUEEN = 5;
-    public static final int KING = 6;
+    public static final byte EMPTY = 0;
+    public static final byte PAWN = 1;
+    public static final byte KNIGHT = 2;
+    public static final byte BISHOP = 3;
+    public static final byte ROOK = 4;
+    public static final byte QUEEN = 5;
+    public static final byte KING = 6;
 
-    public static final int WHITE = 1;
-    public static final int BLACK = -1;
+    public static final byte WHITE = 1;
+    public static final byte BLACK = -1;
 
     /**
      * Integer pair representing a move from one square to another.
      */
     public class Move {
-        final int from;
-        final int to;
+        final byte from;
+        final byte to;
 
         /**
          * Constructor. Throws IllegalArgumentException if "to" or "from" are not between 0 and 63, or if they are
@@ -44,7 +44,7 @@ public class Board {
          * @param from Square of piece to move
          * @param to   Square to move piece to
          */
-        public Move(int from, int to) {
+        public Move(byte from, byte to) {
             if (from < 0 || from > 63 || to < 0 || to > 63)
                 throw new IllegalArgumentException("Square out of bounds");
             if (from == to)
@@ -55,10 +55,10 @@ public class Board {
     }
 
     // Instance variables
-    private int[] squares;
-    private int turn;      // WHITE | BLACK
-    private int check;     // WHITE | BLACK | 0
-    private int checkMate; // WHITE | BLACK | 0
+    private byte[] squares;
+    private byte turn;      // WHITE | BLACK
+    private byte check;     // WHITE | BLACK | 0
+    private byte checkMate; // WHITE | BLACK | 0
     private Boolean draw;
     private Stack<Move> moveHistory;
     // Used to keep track of castling rights
@@ -69,7 +69,7 @@ public class Board {
      * Default constructor. Initializes the board for a new game.
      */
     public Board() {
-        squares = new int[64];
+        squares = new byte[64];
         turn = WHITE;
         check = 0;
         checkMate = 0;
@@ -93,7 +93,7 @@ public class Board {
         // Get a copy of original board's squares array
         squares = originalBoard.squares.clone();
         // Switch turn to opposite color
-        turn = -originalBoard.turn;
+        turn = (byte)-originalBoard.turn;
         check = originalBoard.check;
         checkMate = originalBoard.checkMate;
         draw = originalBoard.draw;
@@ -108,9 +108,9 @@ public class Board {
         blackRRookMoved = originalBoard.blackRRookMoved;
 
         // Find the piece we want to move
-        int pieceToMove = squares[move.from];
+        byte pieceToMove = squares[move.from];
 
-        if (pieceToMove > 0 && originalBoard.turn == BLACK || pieceToMove < 0 && originalBoard.turn == BLACK)
+        if (pieceToMove > 0 && originalBoard.turn == BLACK || pieceToMove < 0 && originalBoard.turn == WHITE)
             throw new IllegalMoveException("Tried to move piece during opponent's turn");
 
         // Try to make the move.
@@ -135,6 +135,10 @@ public class Board {
         }
 
         if (!moveSuccessful) throw new IllegalMoveException("From: " + move.from + " To: " + move.to);
+    }
+
+    public byte[] getSquares() {
+        return squares;
     }
 
     private Boolean movePawn() {
@@ -172,14 +176,14 @@ public class Board {
      *
      * @param color The color of the pieces to initialize
      */
-    private void initPieces(int color) {
+    private void initPieces(byte color) {
         for (int i = 0; i < 16; i++) {
             // If this is for black subtract 63 from i and take absolute value
             int index = color == WHITE ? i : Math.abs(i - 63);
-            if (i >= 8 && i <= 15) squares[index] = PAWN * color;
-            else if (i == 0 || i == 7) squares[index] = ROOK * color;
-            else if (i == 1 || i == 6) squares[index] = KNIGHT * color;
-            else if (i == 2 || i == 5) squares[index] = BISHOP * color;
+            if (i >= 8 && i <= 15) squares[index] = (byte)(PAWN * color);
+            else if (i == 0 || i == 7) squares[index] = (byte)(ROOK * color);
+            else if (i == 1 || i == 6) squares[index] = (byte)(KNIGHT * color);
+            else if (i == 2 || i == 5) squares[index] = (byte)(BISHOP * color);
             else if (i == 3) squares[index] = color == WHITE ? QUEEN : -KING;
             else if (i == 4) squares[index] = color == WHITE ? KING : -QUEEN;
         }
