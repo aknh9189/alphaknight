@@ -1,9 +1,10 @@
 package com.alphaknight;
 
+import java.util.Stack;
+
 /**
  * Represents the board using an array of 64 integers. Values in the array from 1 to 6 indicate the presence of a white
- * piece type, and values from -1 to -6 represent a black piece. Zeroes represent an empty square. This class should be
- * treated as immutable, so any changes to the game state can only be made by creating a new Board instance.
+ * piece type, and values from -1 to -6 represent a black piece. Zeroes represent an empty square.
  *
  * Array indices visualized:
  *
@@ -29,7 +30,7 @@ public class Board {
     public static final byte BLACK = -1;
 
     /**
-     * Integer pair representing a move from one square to another.
+     * Represents a move.
      */
     public class Move {
         final byte from;
@@ -50,16 +51,15 @@ public class Board {
     }
 
     // Instance variables
-    private final byte[] squares;
-    private final byte colorToMove;
-    private final boolean check;
-    private final boolean checkmate;
-    private final Boolean stalemate;
-    private final Board previousBoard;
-    private final Move previousMove;
+    private byte[] squares;
+    private byte colorToMove;
+    private boolean check;
+    private boolean checkmate;
+    private Boolean stalemate;
+    private Stack<Move> moveHistory;
     // Used to keep track of castling rights
-    private final Boolean whiteKingMoved, whiteLRookMoved, whiteRRookMoved;
-    private final Boolean blackKingMoved, blackLRookMoved, blackRRookMoved;
+    private Boolean whiteKingMoved, whiteLRookMoved, whiteRRookMoved;
+    private Boolean blackKingMoved, blackLRookMoved, blackRRookMoved;
 
     /**
      * Default constructor. Initializes the board for a new game.
@@ -70,8 +70,7 @@ public class Board {
         check = false;
         checkmate = false;
         stalemate = false;
-        previousBoard = null;
-        previousMove = null;
+        moveHistory = new Stack<Move>();
         whiteKingMoved = whiteLRookMoved = whiteRRookMoved = false;
         blackKingMoved = blackLRookMoved = blackRRookMoved = false;
 
@@ -80,123 +79,105 @@ public class Board {
     }
 
     /**
-     * Constructor. Creates a new board from the passed in one representing the game state after executing the given
-     * move.
-     *
-     * @param originalBoard the initial game state
-     * @param move          the move to make
-     */
-    private Board(Board originalBoard, Move move) {
-        // Get a copy of original board's squares array and update it
-        squares = originalBoard.squares.clone();
-        squares[move.to] = squares[move.from];
-        squares[move.from] = 0;
-        // Switch colorToMove to opposite color
-        colorToMove = (byte)-originalBoard.colorToMove;
-        check = inCheck(colorToMove);
-
-        if(check) {
-            checkmate = hasMoves(colorToMove);
-            stalemate = false;
-        }
-        else {
-            stalemate = !hasMoves(colorToMove);
-            checkmate = false;
-        }
-
-        previousBoard = originalBoard;
-        previousMove = move;
-
-        whiteKingMoved = squares[4] != KING || originalBoard.whiteKingMoved;
-        whiteLRookMoved = squares[0] != ROOK || originalBoard.whiteLRookMoved;
-        whiteRRookMoved = squares[7] != ROOK || originalBoard.whiteRRookMoved;
-        blackKingMoved = squares[60] != KING || originalBoard.blackKingMoved;
-        blackLRookMoved = squares[56] != ROOK || originalBoard.blackLRookMoved;
-        blackRRookMoved = squares[63] != ROOK || originalBoard.blackRRookMoved;
-    }
-
-    /**
-     * Returns a new board based off this one representing the state of the game after making the given move.
+     * Moves a piece. Throws IllegalMoveException if the move is invalid.
      *
      * @param from The square of the piece to move
      * @param to   The square to move the piece to
-     * @return     The new board
      * @throws IllegalMoveException
      */
-    public Board move(int from, int to) throws IllegalMoveException {
-        if(from < 0 || from > 63 || to < 0 || to > 63)
+    public void move(int from, int to) throws IllegalMoveException {
+        if (from < 0 || from > 63 || to < 0 || to > 63)
             throw new IllegalMoveException("Move out of bounds");
-        if(from == to)
+        if (from == to)
             throw new IllegalMoveException("Not a move");
         if (squares[from] > 0 && colorToMove == BLACK || squares[from] < 0 && colorToMove == WHITE)
-            throw new IllegalMoveException("Tried to move piece during opponent's colorToMove");
-        if(squares[from] == EMPTY)
+            throw new IllegalMoveException("Tried to move piece during opponent's turn");
+        if (squares[from] == EMPTY)
             throw new IllegalMoveException("No piece found");
+
+        // Make sure the piece doesn't move off the sides of the board
+        int fromCol = from % 8;
+        int toCol = to % 8;
+
+        if (fromCol < fromCol + ((to - from) % 8) && fromCol > toCol)
+            throw new IllegalMoveException("Move goes beyond right side of board");
+
+        if(fromCol > fromCol + ((to - from) % 8) && fromCol < toCol)
+            throw new IllegalArgumentException("Move goes beyond left side of board");
 
         // Try to make the move.
         // If the method called returns true, move was successful, else throw IllegalMoveException
+        Move m = new Move((byte)from, (byte)to, squares[to]);
         Boolean moveIsValid;
         switch (Math.abs(squares[from])) {
-            case PAWN:   moveIsValid = movePawn();
+            case PAWN:   moveIsValid = movePawn(m);
                 break;
-            case KNIGHT: moveIsValid = moveKnight();
+            case KNIGHT: moveIsValid = moveKnight(m);
                 break;
-            case BISHOP: moveIsValid = moveBishop();
+            case BISHOP: moveIsValid = moveBishop(m);
                 break;
-            case ROOK:   moveIsValid = moveRook();
+            case ROOK:   moveIsValid = moveRook(m);
                 break;
-            case QUEEN:  moveIsValid = moveQueen();
+            case QUEEN:  moveIsValid = moveQueen(m);
                 break;
-            case KING:   moveIsValid = moveKing();
+            case KING:   moveIsValid = moveKing(m);
                 break;
             default:     moveIsValid = false;
         }
 
         if (!moveIsValid) throw new IllegalMoveException("From: " + from + " To: " + to);
-        // Make the new board
-        return new Board(this, new Move((byte)from, (byte)to, squares[to]));
+        moveHistory.push(m);
     }
 
-    public byte[] getSquares() {
-        return squares;
+    public byte[] getSquares() { return squares;
     }
 
-    private Boolean movePawn() {
+    private boolean movePawn(Move move) {
         // TODO
         return false;
     }
 
-    private Boolean moveKnight() {
+    private boolean moveKnight(Move move) {
+        // Possible "jumps" from the current square
+        byte[] moves = {-17, 15, 17, -15};
+
+        for (byte b : moves) {
+            if (move.to - move.from == b && squares[move.to] * colorToMove > 0) {
+                squares[move.to] = squares[move.from];
+                squares[move.from] = 0;
+                // If the move puts this color's king in check, undo it
+                if(inCheck(colorToMove)) {
+                    squares[move.from] = squares[move.to];
+                    squares[move.to] = move.captured;
+                }
+                else return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean moveBishop(Move move) {
         // TODO
         return false;
     }
 
-    private Boolean moveBishop() {
+    private boolean moveRook(Move move) {
         // TODO
         return false;
     }
 
-    private Boolean moveRook() {
+    private boolean moveQueen(Move move) {
         // TODO
         return false;
     }
 
-    private Boolean moveQueen() {
-        // TODO
-        return false;
-    }
-
-    private Boolean moveKing() {
+    private boolean moveKing(Move move) {
          // TODO
         return false;
     }
 
     private boolean inCheck(byte color) {
-        // TODO
-        return false;
-    }
-
-    private Boolean kingCanMove(byte color) {
         // TODO
         return false;
     }
@@ -207,7 +188,7 @@ public class Board {
     }
 
     /**
-     * Puts pieces on the board for a given color.
+     * Puts pieces on the board for a given color and adds them to the color's piece array.
      *
      * @param color The color of the pieces to initialize
      */
