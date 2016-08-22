@@ -35,18 +35,62 @@ public class Board {
     public class Move {
         final byte from;
         final byte to;
+        final byte piece;
         final byte captured;
 
         /**
          * Constructor.
          *
-         * @param from Square of piece to move
-         * @param to   Square to move piece to
+         * @param from     Square of piece to move
+         * @param to       Square to move piece to
+         * @param captured Value present in the "to" square
          */
-        public Move(byte from, byte to, byte captured) {
+        public Move(byte from, byte to, byte moved, byte captured) throws IllegalArgumentException {
+            if(from < 0 || from > 63 || to < 0 || to > 63)
+                throw new IllegalArgumentException("Square out of bounds");
+            if(from == to)
+                throw new IllegalArgumentException("Not a move");
+            if(moved < -6 || moved > 6 || captured < -6 || captured > 6)
+                throw new IllegalArgumentException("Piece value is undefined");
+
+            // Make sure the piece doesn't move off the sides of the board
+            int fromCol = from % 8;
+            int toCol = to % 8;
+
+            if (fromCol < fromCol + ((to - from) % 8) && fromCol > toCol)
+                throw new IllegalArgumentException("\"to\" goes beyond right side of board");
+
+            if (fromCol > fromCol + ((to - from) % 8) && fromCol < toCol)
+                throw new IllegalArgumentException("\"to\" goes beyond left side of board");
+
             this.from = from;
             this.to = to;
+            this.piece = moved;
             this.captured = captured;
+        }
+
+        @Override
+        public String toString() {
+            String str;
+            switch (piece) {
+                case PAWN:   str = "";
+                    break;
+                case KNIGHT: str = "N";
+                    break;
+                case BISHOP: str = "B";
+                    break;
+                case ROOK:   str = "R";
+                    break;
+                case QUEEN:  str = "Q";
+                    break;
+                case KING:   str = "K";
+                    break;
+                default:     str = "";
+            }
+            int file = 'a' + to % 8;
+            int rank = '1' + to / 8;
+            if(captured != EMPTY) str += "x";
+            return str + (char)file + (char)rank;
         }
     }
 
@@ -86,30 +130,19 @@ public class Board {
      * @throws IllegalMoveException
      */
     public void move(int from, int to) throws IllegalMoveException {
-        if (from < 0 || from > 63 || to < 0 || to > 63)
-            throw new IllegalMoveException("Move out of bounds");
-        if (from == to)
-            throw new IllegalMoveException("Not a move");
         if (squares[from] > 0 && colorToMove == BLACK || squares[from] < 0 && colorToMove == WHITE)
             throw new IllegalMoveException("Tried to move piece during opponent's turn");
         if (squares[from] == EMPTY)
             throw new IllegalMoveException("No piece found");
-
-        // Make sure the piece doesn't move off the sides of the board
-        int fromCol = from % 8;
-        int toCol = to % 8;
-
-        if (fromCol < fromCol + ((to - from) % 8) && fromCol > toCol)
-            throw new IllegalMoveException("Move goes beyond right side of board");
-
-        if(fromCol > fromCol + ((to - from) % 8) && fromCol < toCol)
-            throw new IllegalArgumentException("Move goes beyond left side of board");
+        if (squares[to] * colorToMove > 0)
+            throw new IllegalMoveException("Tried to capture piece of the same color");
 
         // Try to make the move.
-        // If the method called returns true, move was successful, else throw IllegalMoveException
-        Move m = new Move((byte)from, (byte)to, squares[to]);
+        // If the method called returns true, the piece was piece, else throw IllegalMoveException
+        Move m = new Move((byte)from, (byte)to, squares[from], squares[to]);
         Boolean moveIsValid;
-        switch (Math.abs(squares[from])) {
+
+        switch (Math.abs(m.piece)) {
             case PAWN:   moveIsValid = movePawn(m);
                 break;
             case KNIGHT: moveIsValid = moveKnight(m);
@@ -125,32 +158,83 @@ public class Board {
             default:     moveIsValid = false;
         }
 
-        if (!moveIsValid) throw new IllegalMoveException("From: " + from + " To: " + to);
+        if (!moveIsValid) throw new IllegalMoveException("Invalid move from " + from + " to " + to);
+
+        // If the move left the king in check, undo it and throw exception
+        if (inCheck(colorToMove)) {
+            squares[m.from] = m.piece;
+            squares[m.to] = m.captured;
+            throw new IllegalMoveException("Move leaves king in check");
+        }
+
+        // Move was valid! Update the board
         moveHistory.push(m);
+        colorToMove = (byte)-colorToMove;
+        check = inCheck(colorToMove);
+        if (check) {
+            if(!hasMoves(colorToMove)) checkmate = true;
+            stalemate = false;
+        }
+        else {
+            if(!hasMoves(colorToMove)) stalemate = true;
+            checkmate = false;
+        }
     }
 
-    public byte[] getSquares() { return squares;
+    public void move(int srcCol, int srcRow, int dstCol, int dstRow) throws IllegalMoveException {
+        move((srcRow - 1) * 8 + srcCol - 1, (dstRow - 1) * 8 + dstCol - 1);
+    }
+
+    public byte[] getSquares() {
+        return squares;
+    }
+
+    public Boolean getCheck() {
+        return inCheck(colorToMove);
+    }
+
+    public Boolean getCheckmate() {
+        return checkmate;
+    }
+
+    public Boolean getStalemate() {
+        return stalemate;
+    }
+
+    public int getColorToMove() {
+        return colorToMove;
     }
 
     private boolean movePawn(Move move) {
-        // TODO
-        return false;
+        // TODO -- add stuff for en passant
+        int jump = move.to - move.from;
+
+        // Make sure sign of jump matches color
+        if (jump * colorToMove == 7 || jump * colorToMove == 9)
+            if (move.captured == EMPTY) return false;
+
+        else if (jump * colorToMove == 8)
+            if (move.captured != EMPTY) return false;
+
+        else return false;
+
+        squares[move.from] = EMPTY;
+        squares[move.to] = move.piece;
+
+        return true;
     }
 
     private boolean moveKnight(Move move) {
         // Possible "jumps" from the current square
         byte[] moves = {-17, 15, 17, -15};
 
-        for (byte b : moves) {
-            if (move.to - move.from == b && squares[move.to] * colorToMove > 0) {
-                squares[move.to] = squares[move.from];
-                squares[move.from] = 0;
-                // If the move puts this color's king in check, undo it
-                if(inCheck(colorToMove)) {
-                    squares[move.from] = squares[move.to];
-                    squares[move.to] = move.captured;
-                }
-                else return true;
+        for (byte m : moves) {
+            // If this is a valid "jump" and captured piece is opposite color (or empty), try the move
+            if (move.to - move.from == m) {
+                squares[move.to] = move.piece;
+                squares[move.from] = EMPTY;
+
+                return true;
             }
         }
 
@@ -158,7 +242,23 @@ public class Board {
     }
 
     private boolean moveBishop(Move move) {
-        // TODO
+        byte[] moves = {7, 9, -7, -9};
+
+        for (byte m : moves) {
+            // If to - from is divisible by m, and both numbers have the same sign, try sliding
+            if ((move.to - move.from) % m == 0 && (move.to - move.from) * m > 0) {
+                // Check every diagonal between from and to and make sure it's empty
+                int jumps = 1;
+                while (jumps * m + move.from != move.to) {
+                    if (squares[jumps * m + move.from] != EMPTY) return false;
+                    jumps++;
+                }
+                squares[move.to] = move.piece;
+                squares[move.from] = EMPTY;
+
+                return true;
+            }
+        }
         return false;
     }
 
@@ -229,11 +329,43 @@ public class Board {
                 str = "";
             }
         }
+
+        int moveCount = 0;
+        for(Move move : moveHistory) {
+            if(moveCount % 2 == 0) str += (moveCount/2 + 1) + ". ";
+            str += move.toString() + " ";
+            moveCount++;
+        }
+        System.out.println("\n" + str + "\n");
     }
 
     public static void main(String[] args) {
         Board b = new Board();
         b.printBoard();
+
+        try {
+            b.move(5, 2, 5, 4);
+            b.printBoard();
+
+            b.move(4, 7, 4, 6);
+            b.printBoard();
+
+            b.move(2, 1, 3, 3);
+            b.printBoard();
+
+            b.move(5, 7, 5, 5);
+            b.printBoard();
+
+            b.move(4, 2, 4, 4);
+            b.printBoard();
+
+            b.move(5, 5, 4, 4);
+            b.printBoard();
+        }
+        catch (IllegalMoveException ime) {
+            System.out.println(ime.getMessage());
+        }
+
     }
 }
 
